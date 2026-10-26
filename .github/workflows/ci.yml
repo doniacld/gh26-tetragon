@@ -66,6 +66,9 @@ jobs:
   # On a branch that still carries the shady dependency the job goes RED; swap it
   # for a clean in-tree helper and /upload returns 201, so the job goes GREEN.
   runtime-check:
+    # Pull requests only: main deliberately carries the shady dependency, so the
+    # check would always be red there. On a PR it's the gate that matters.
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
     env:
       TETRAGON_VERSION: "1.7.1"
