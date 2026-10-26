@@ -1,0 +1,21 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: "gallery-payments-kill"
+spec:
+  kprobes:
+    - call: "tcp_connect"
+      syscall: false
+      args:
+        - index: 0
+          type: "sock"
+      selectors:
+        - matchBinaries:
+            - operator: "Postfix"
+              values: ["/gallery"]
+          matchArgs:
+            - index: 0
+              operator: "DPort"
+              values: ["8080"]
+          matchActions:
+            - action: Sigkill

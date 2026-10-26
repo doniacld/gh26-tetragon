@@ -1,0 +1,129 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: party
+---
+# The merchant secret the payments service uses.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: payments-vault
+  namespace: party
+type: Opaque
+stringData:
+  secret: "sk_live_octocat_DEMO_do_not_use_0e8f2c" # obviously fake
+---
+# ── payments ────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payments
+  namespace: party
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: payments }
+  template:
+    metadata:
+      labels:
+        app: payments
+        tier: payments
+        # __GIT_SHA__ is replaced at deploy time (Makefile/CI). Rides on every
+        # Tetragon event for the pod so a violation maps to a commit.
+        commit-sha: "__GIT_SHA__"
+    spec:
+      containers:
+        - name: payments
+          image: payments:demo
+          imagePullPolicy: IfNotPresent
+          ports: [{ containerPort: 8080 }]
+          env:
+            - name: PAYMENTS_SECRET
+              valueFrom:
+                secretKeyRef: { name: payments-vault, key: secret }
+          livenessProbe:  { httpGet: { path: /healthz, port: 8080 } }
+          readinessProbe: { httpGet: { path: /healthz, port: 8080 } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: payments, namespace: party }
+spec:
+  selector: { app: payments }
+  ports: [{ port: 8080, targetPort: 8080 }]
+---
+# ── gallery (serves the photo wall + the risky /upload feature) ──────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gallery
+  namespace: party
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: gallery }
+  template:
+    metadata:
+      labels:
+        app: gallery
+        tier: gallery
+        commit-sha: "__GIT_SHA__"
+    spec:
+      containers:
+        - name: gallery
+          image: gallery:demo
+          imagePullPolicy: IfNotPresent
+          ports: [{ containerPort: 8080 }]
+          env:
+            # Where the upload dependency "phones home". In-cluster service DNS.
+            - name: PAYMENTS_ADDR
+              value: "payments:8080"
+            # Optional external exfil beat; off by default. 192.0.2.1 is
+            # TEST-NET-1 (RFC 5737) — unroutable, outside the cluster CIDRs.
+            # - name: SINK_ADDR
+            #   value: "192.0.2.1:4444"
+          livenessProbe:  { httpGet: { path: /healthz, port: 8080 } }
+          readinessProbe: { httpGet: { path: /healthz, port: 8080 } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: gallery, namespace: party }
+spec:
+  selector: { app: gallery }
+  ports: [{ port: 8080, targetPort: 8080 }]
+---
+# ── frontend (the public site; the only tier meant to fan out east-west) ─────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: party
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: frontend }
+  template:
+    metadata:
+      labels:
+        app: frontend
+        tier: frontend
+        commit-sha: "__GIT_SHA__"
+    spec:
+      containers:
+        - name: frontend
+          image: frontend:demo
+          imagePullPolicy: IfNotPresent
+          ports: [{ containerPort: 8080 }]
+          env:
+            - name: GALLERY_ADDR
+              value: "gallery:8080"
+            - name: PAYMENTS_ADDR
+              value: "payments:8080"
+          livenessProbe:  { httpGet: { path: /healthz, port: 8080 } }
+          readinessProbe: { httpGet: { path: /healthz, port: 8080 } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: frontend, namespace: party }
+spec:
+  selector: { app: frontend }
+  ports: [{ port: 8080, targetPort: 8080 }]

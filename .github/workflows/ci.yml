@@ -1,0 +1,116 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  # Static checks: build, test, vet, gofmt, and a vulnerability scan.
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v7
+        with: { go-version: "1.26", check-latest: true, cache: false }
+      - run: go build ./...
+
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v7
+        with: { go-version: "1.26", check-latest: true, cache: false }
+      - run: go test ./...
+
+  vet:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v7
+        with: { go-version: "1.26", check-latest: true, cache: false }
+      - run: go vet ./...
+
+  fmt:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v7
+        with: { go-version: "1.26", check-latest: true, cache: false }
+      - run: test -z "$(gofmt -l .)"
+
+  vuln:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v7
+        with: { go-version: "1.26", check-latest: true, cache: false }
+      - run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - run: govulncheck ./...
+
+  # Runtime check: deploy the services on kind with Tetragon enforcing the
+  # platform's runtime policies, exercise the site, and fail the build if
+  # Tetragon had to enforce a policy.
+  runtime-check:
+    runs-on: ubuntu-24.04
+    env:
+      TETRAGON_VERSION: "1.7.1"
+      CLUSTER: party-ci
+    steps:
+      - uses: actions/checkout@v5
+      - uses: helm/kind-action@v1
+        with: { cluster_name: party-ci }
+      - name: Install Tetragon
+        run: |
+          helm repo add cilium https://helm.cilium.io --force-update
+          # --disable-kprobe-multi: Override can't be used with kprobe_multi
+          # (newer runner kernels would otherwise fail to load the block policy)
+          helm upgrade --install tetragon cilium/tetragon -n kube-system \
+            --version "${TETRAGON_VERSION}" --set tetragon.extraArgs.disable-kprobe-multi=true
+          kubectl -n kube-system rollout status ds/tetragon
+      - name: Build, load, deploy the three services + policies
+        run: |
+          for s in frontend gallery payments; do
+            docker build -f deploy/Dockerfile --build-arg SERVICE=$s \
+              --build-arg GIT_SHA="${GITHUB_SHA}" -t $s:demo .
+            kind load docker-image $s:demo --name "${CLUSTER}"
+          done
+          sed "s/__GIT_SHA__/${GITHUB_SHA}/g" deploy/after-party.yaml | kubectl apply -f -
+          kubectl apply -f policies/after-party/
+          for s in frontend gallery payments; do
+            kubectl -n party rollout status deploy/$s --timeout=90s
+          done
+          sleep 5
+          kubectl exec -n kube-system ds/tetragon -c tetragon -- \
+            tetra tp set-mode gallery-payments-block enforce
+          kubectl exec -n kube-system ds/tetragon -c tetragon -- \
+            tetra tp set-mode gallery-payments-kill monitor
+          sleep 3
+      - name: Exercise the site and gate on Tetragon enforcement
+        run: |
+          kubectl -n party port-forward deploy/frontend 8080:8080 &
+          sleep 3
+          curl -s -o /dev/null -w 'GET  /        -> %{http_code}\n' localhost:8080/
+          curl -s -o /dev/null -w 'GET  /gallery -> %{http_code}\n' localhost:8080/gallery
+          curl -s -o /dev/null -w 'POST /buy     -> %{http_code}\n' -X POST localhost:8080/buy
+          curl -s -o /dev/null -w 'POST /upload  -> %{http_code}\n' \
+            -F sighting=@testdata/headshot.png localhost:8080/upload
+          sleep 3
+          # Gate on what Tetragon saw, not on status codes: any enforced
+          # policy means the code did something the platform forbids.
+          enforced=$(kubectl -n kube-system logs ds/tetragon -c export-stdout \
+            | jq -c 'select(.process_kprobe.action == "KPROBE_ACTION_OVERRIDE")' | tee /tmp/enforced.json | wc -l)
+          if [ "$enforced" -gt 0 ]; then
+            jq -r '.process_kprobe | "::error title=Runtime violation::\(.policy_name): \(.process.binary) in \(.process.pod.name) (\(.function_name))"' /tmp/enforced.json | sort -u
+            exit 1
+          fi
+          echo "No runtime policy was enforced: build is clean."
+      - name: Tetragon events (party namespace)
+        if: always()
+        run: |
+          echo "── Tetragon events for namespace party (export-stdout sidecar) ──"
+          kubectl -n kube-system logs ds/tetragon -c export-stdout \
+            | grep -E 'security_socket_connect|tcp_connect' | grep gallery | tail -n 40 || true

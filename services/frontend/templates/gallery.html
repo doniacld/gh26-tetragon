@@ -1,0 +1,29 @@
+{{define "title"}}Photo wall{{end}}
+{{define "content"}}
+<div class="crumbs">Mona's After-Party / Photo wall</div>
+<h1>Octocat sightings</h1>
+<p class="lede">Photos Mona posted around Universe, and now the ones you upload too.</p>
+
+<div class="panel" style="margin-bottom:24px">
+  <form action="/upload" method="post" enctype="multipart/form-data">
+    <label>Add your own Octocat sighting</label>
+    <input type="file" name="sighting" accept="image/*" required />
+    <div style="margin-top:14px"><button class="btn" type="submit">Upload sighting</button></div>
+  </form>
+  {{if .Status}}<div class="status{{if .Error}} error{{end}}">{{.Status}}</div>{{end}}
+  <p class="muted" style="margin-top:14px;font-size:12px">We generate a 256px thumbnail for the wall.</p>
+</div>
+
+<div class="cards">
+  {{range .Sightings}}
+  <div class="card">
+    {{with .ImageURL}}<img src="{{.}}" alt="Uploaded Octocat sighting" />{{end}}
+    <div>{{.Caption}}</div>
+    <div class="by">by {{.By}}</div>
+  </div>
+  {{else}}
+  <div class="card muted">The wall is loading… (is the gallery service up?)</div>
+  {{end}}
+</div>
+{{if .Status}}<script>history.replaceState(null, "", "/gallery")</script>{{end}}
+{{end}}

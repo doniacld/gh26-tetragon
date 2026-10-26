@@ -1,0 +1,73 @@
+{{/* mona draws the Octocat; the argument is the CSS class ("mona" or "mona-inline"). */}}
+{{define "mona"}}<svg class="{{.}}" viewBox="0 0 16 16" role="img" aria-label="Mona"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>{{end}}
+{{define "layout"}}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{template "title" .}} · Mona's After-Party</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --canvas:#0d1117; --surface:#161b22; --inset:#010409;
+      --border:#30363d; --fg:#e6edf3; --muted:#7d8590;
+      --purple:#a371f7; --pink:#f778ba; --coral:#ffa657;
+      --green:#3fb950; --danger:#f85149;
+      --uni:linear-gradient(120deg,#a371f7 0%,#f778ba 55%,#ffa657 100%);
+    }
+    *{box-sizing:border-box} a{color:var(--purple);text-decoration:none}
+    body{margin:0;font:15px/1.55 -apple-system,"Segoe UI",system-ui,sans-serif;color:var(--fg);min-height:100vh;
+      background:radial-gradient(900px 500px at 85% -15%,rgba(163,113,247,.20),transparent 60%),
+                 radial-gradient(800px 500px at 0% 0%,rgba(247,120,186,.14),transparent 55%),var(--canvas)}
+    header{display:flex;align-items:center;gap:14px;padding:14px 28px;border-bottom:1px solid var(--border);
+      background:rgba(13,17,23,.8);position:sticky;top:0;backdrop-filter:blur(8px);z-index:5}
+    .mona{width:28px;height:28px;fill:var(--fg)}
+    .mona-inline{width:.9em;height:.9em;vertical-align:-.1em;fill:currentColor}
+    h1 .mona-inline{fill:var(--coral)}
+    header b{font-size:15px;letter-spacing:.2px}
+    .badge{font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px;background:var(--uni);color:#0d1117}
+    nav{margin-left:auto;display:flex;gap:22px}
+    nav a{color:var(--muted);font-size:14px;font-weight:600;padding:4px 0;border-bottom:2px solid transparent}
+    nav a:hover{color:var(--fg)} nav a.active{color:var(--fg);border-bottom-color:var(--purple)}
+    .wrap{max-width:940px;margin:0 auto;padding:40px 24px 80px}
+    .crumbs{color:var(--muted);font-size:13px;margin-bottom:10px}
+    h1{margin:0 0 8px;font-size:40px;line-height:1.1;letter-spacing:-.5px;background:var(--uni);
+       -webkit-background-clip:text;background-clip:text;color:transparent}
+    .lede{color:var(--muted);margin:0 0 28px;font-size:16px}
+    .panel{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:22px}
+    .btn{display:inline-block;border:0;border-radius:10px;padding:11px 18px;font:inherit;font-weight:700;
+      cursor:pointer;color:#0d1117;background:var(--uni)}
+    .btn.secondary{color:var(--fg);background:#21262d;border:1px solid var(--border)}
+    .cards{display:grid;grid-template-columns:repeat(2,1fr);gap:18px;margin-top:8px}
+    @media(max-width:720px){.cards{grid-template-columns:1fr}}
+    .card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px}
+    .card img{display:block;width:100%;aspect-ratio:16/10;object-fit:cover;border-radius:8px;margin-bottom:10px}
+    .card .by{color:var(--muted);font-size:13px;margin-top:6px}
+    label{display:block;font-weight:600;font-size:13px;margin:16px 0 6px}
+    input[type=file]{color:var(--muted)}
+    input:not([type=file]){width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border);
+      background:var(--inset);color:var(--fg);font:inherit}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    .btn:disabled{opacity:.7;cursor:progress}
+    .receipt{display:grid;gap:8px;margin-top:14px;padding:14px;border-radius:10px;background:var(--inset);border:1px solid var(--border)}
+    .receipt div{display:flex;justify-content:space-between}
+    .status{margin-top:14px;font-size:14px;color:var(--green)}
+    .status.error{color:var(--danger)}
+    .muted{color:var(--muted)}
+  </style>
+</head>
+<body>
+  <header>
+    {{template "mona" "mona"}}
+    <b>Mona's&nbsp;After-Party</b>
+    <span class="badge">{{template "mona" "mona-inline"}} 2026</span>
+    <nav>
+      <a href="/"{{if eq .Page "home"}} class="active"{{end}}>Home</a>
+      <a href="/gallery"{{if eq .Page "gallery"}} class="active"{{end}}>Photo wall</a>
+      <a href="/tickets"{{if eq .Page "tickets"}} class="active"{{end}}>Get a ticket</a>
+    </nav>
+  </header>
+  <div class="wrap">{{template "content" .}}</div>
+</body>
+</html>
+{{end}}

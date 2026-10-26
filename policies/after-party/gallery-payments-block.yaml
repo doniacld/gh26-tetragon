@@ -1,0 +1,22 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: "gallery-payments-block"
+spec:
+  kprobes:
+    - call: "security_socket_connect"
+      syscall: false
+      args:
+        - index: 1
+          type: "sockaddr"
+      selectors:
+        - matchBinaries:
+            - operator: "Postfix"
+              values: ["/gallery"]
+          matchArgs:
+            - index: 1
+              operator: "SPort"
+              values: ["8080"]
+          matchActions:
+            - action: Override
+              argError: -1
