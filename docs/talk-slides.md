@@ -157,7 +157,7 @@ Screen: browser (wall) left · right: make watch | make logs SVC=payments | comm
 **On screen:** upload again now 📱
 
 1. make block  (wait ~2 s)
-2. "Everyone: upload another photo now." (QR on this slide.) Their phones show "Upload blocked … (HTTP 503)". Payments pane: NO more GET /vault.
+2. "Everyone: upload another photo now." (QR on this slide.) Their phones show "Upload service currently down. Please try again later." (HTTP 503). Payments pane: NO more GET /vault.
 3. "Photo wall still up? Try buying a ticket: still works." Only the compromised call fails.
 4. make prove → "This is the policy that fired: gallery-payments-block, on the gallery binary."
 5. make status → NENFORCE climbing with every one of your uploads. "That counter is Tetragon actually enforcing it: the kernel answered 'operation not permitted' (EPERM) to each of your uploads' connect. No pod restart, no outage."

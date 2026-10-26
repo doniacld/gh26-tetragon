@@ -176,7 +176,7 @@ func upload(w http.ResponseWriter, r *http.Request) {
 	case err == nil && resp.StatusCode == http.StatusRequestEntityTooLarge:
 		show("That photo is too big (10 MB max).", true, http.StatusRequestEntityTooLarge)
 	default:
-		show("Upload blocked: the thumbnail service refused (HTTP "+statusOf(resp, err)+").", true, http.StatusServiceUnavailable)
+		show("Upload service currently down. Please try again later.", true, http.StatusServiceUnavailable)
 	}
 }
 

@@ -130,8 +130,7 @@ POST /buy    (ticket)   -> 200
 POST /upload (sighting) -> 503
 ```
 
-In the **browser**: uploading shows **⛔ Upload blocked: the thumbnail service
-refused (HTTP 503)**, no new photo is added, and the Photo wall and ticket
+In the **browser**: uploading shows **⛔ Upload service currently down. Please try again later.** (HTTP 503)**, no new photo is added, and the Photo wall and ticket
 purchase keep working. The payments log shows **no** `GET /vault`: the connect
 was denied before it left the gallery. Tetragon surgically denied *one
 connection* from *one workload*.

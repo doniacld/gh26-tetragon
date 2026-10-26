@@ -248,7 +248,7 @@ policy = code_right(
 demo2 = large("Demo: block it", """
 8:15 · 1:45 · DEMO 2 (block · Override)
 1. make block  (wait ~2 s)
-2. Upload a sighting → red "Upload blocked … (HTTP 503)", no new photo. Payments pane: NO GET /vault.
+2. Upload a sighting → red "Upload service currently down. Please try again later." (HTTP 503), no new photo. Payments pane: NO GET /vault.
 3. Photo wall, buy a ticket: both still work.
 "Same code, same policy. I just switched it to enforce. Upload… blocked. The wall is up, tickets still sell. Only the compromised call failed."
 4. make prove → "This is the policy that fired: gallery-payments-block, on the gallery binary."

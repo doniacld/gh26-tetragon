@@ -97,7 +97,7 @@ spec:
 **What the application sees.** Go's `net.Dial` fails with
 `connect: operation not permitted`. In `phoneHome()` that error is returned, so
 `Thumbnail()` fails, so the gallery's `/upload` handler answers **503**
-("thumbnail unavailable"), and the frontend shows "Upload blocked …".
+("thumbnail unavailable"), and the frontend shows "Upload service currently down. Please try again later.".
 **No packet is sent, no process is killed**: the gallery keeps serving `/pics`,
 tickets keep selling.
 
