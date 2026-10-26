@@ -1,0 +1,87 @@
+# Adapted from Liz Rice's tetragon-ci, .github/actions/tetragon-report/action.yml
+#   https://github.com/lizrice/tetragon-ci (Apache-2.0, see LICENSE)
+# Changes from the original:
+#   - Tetragon runs as a DaemonSet in a kind cluster (not as a systemd service on
+#     the runner), so tetra and the logs are reached through kubectl;
+#   - the full JSON events come from the export-stdout container, filtered to the
+#     demo namespace, and the service logs from the tetragon container;
+#   - no "Stop Tetragon" step (the kind cluster is thrown away with the runner).
+name: Tetragon report (Kubernetes)
+description: Print loaded policies, compact events, full JSON events, and Tetragon logs from a kind cluster
+branding:
+  color: blue
+  icon: shield-off
+
+inputs:
+  namespace:
+    description: Namespace whose events are reported
+    required: false
+    default: party
+
+runs:
+  using: composite
+  steps:
+    - name: Show loaded Tetragon policies
+      shell: bash --noprofile --norc -euo pipefail {0}
+      run: |
+        echo "::group::Show loaded Tetragon policies"
+        kubectl exec -n kube-system ds/tetragon -c tetragon -- tetra tracingpolicy list || true
+        echo "::endgroup::"
+
+    - name: Show compact events
+      shell: bash --noprofile --norc -euo pipefail {0}
+      run: |
+        echo "::group::Show compact events"
+        if [ -f /tmp/tetra.pid ] && kill -0 "$(cat /tmp/tetra.pid)" 2>/dev/null; then
+          echo "Compact event stream is still running; showing captured output so far."
+        fi
+        sleep 1
+
+        echo "==== /tmp/tetra_compact.log ===="
+        if [ -s /tmp/tetra_compact.log ]; then
+          cat /tmp/tetra_compact.log
+
+          total_lines="$(awk 'END { print NR }' /tmp/tetra_compact.log)"
+          shown_lines="$total_lines"
+          if [ "$shown_lines" -gt 30 ]; then
+            shown_lines=30
+          fi
+          remaining_lines=$((total_lines - shown_lines))
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+          {
+            echo "## Tetragon compact events (namespace \`${{ inputs.namespace }}\`)"
+            echo
+            echo "Showing the first ${shown_lines} of ${total_lines} compact event lines."
+            echo
+            echo '```text'
+            head -n "$shown_lines" /tmp/tetra_compact.log
+            echo '```'
+            echo
+            if [ "$remaining_lines" -gt 0 ]; then
+              echo "${remaining_lines} more compact event lines are available in the job logs."
+              echo
+            fi
+            echo "[Open this workflow run](${run_url}), expand the Tetragon report step, then open the \`Show compact events\` log group for the full compact log."
+          } >> "$GITHUB_STEP_SUMMARY"
+        else
+          echo "No compact events were captured by the live stream."
+        fi
+        echo "::endgroup::"
+
+    - name: Show full Tetragon JSON events
+      shell: bash --noprofile --norc -euo pipefail {0}
+      run: |
+        echo "::group::Show full Tetragon JSON events"
+        echo "==== export-stdout, namespace ${{ inputs.namespace }} ===="
+        kubectl logs -n kube-system ds/tetragon -c export-stdout --tail=-1 \
+          | grep "\"namespace\":\"${{ inputs.namespace }}\"" | tail -n 200 || true
+        echo "::endgroup::"
+
+    - name: Show Tetragon service logs
+      shell: bash --noprofile --norc -euo pipefail {0}
+      run: |
+        echo "::group::Show Tetragon service logs"
+        echo "==== kubectl logs ds/tetragon -c tetragon ===="
+        kubectl logs -n kube-system ds/tetragon -c tetragon --tail=120 || true
+        echo "::endgroup::"

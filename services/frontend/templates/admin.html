@@ -1,0 +1,50 @@
+{{define "title"}}Moderation{{end}}
+{{define "content"}}
+<div class="crumbs">Mona's After-Party / Moderation</div>
+<h1>Waiting for approval</h1>
+<p class="lede">{{len .Sightings}} sighting{{if ne (len .Sightings) 1}}s{{end}} waiting. Approved ones appear on the wall
+  within 5 seconds. <a href="/admin?token={{.Token}}">Refresh</a></p>
+
+{{if .Sightings}}
+<form method="post" action="/admin" style="margin-bottom:20px">
+  <input type="hidden" name="token" value="{{.Token}}" />
+  <button class="btn big" name="action" value="approve-all" type="submit">✅ Approve all ({{len .Sightings}})</button>
+</form>
+{{end}}
+
+<div class="cards">
+  {{range .Sightings}}
+  <div class="card">
+    {{with .ImageURL}}<img src="{{.}}" alt="Pending sighting" />{{end}}
+    <div class="by">#{{.ID}}</div>
+    <form method="post" action="/admin" class="mod">
+      <input type="hidden" name="token" value="{{$.Token}}" />
+      <input type="hidden" name="id" value="{{.ID}}" />
+      <button class="btn big" name="action" value="approve" type="submit">✅ Approve</button>
+      <button class="btn big secondary" name="action" value="reject" type="submit">❌ Reject</button>
+    </form>
+  </div>
+  {{else}}
+  <div class="card muted">Nothing waiting. New uploads show up here.</div>
+  {{end}}
+</div>
+
+<h2 style="margin:36px 0 6px">On the wall</h2>
+<p class="lede">{{len .OnWall}} approved upload{{if ne (len .OnWall) 1}}s{{end}}. Remove one if it shouldn't be there.</p>
+<div class="cards">
+  {{range .OnWall}}
+  <div class="card">
+    {{with .ImageURL}}<img src="{{.}}" alt="Approved sighting" />{{end}}
+    <div class="by">#{{.ID}}</div>
+    <form method="post" action="/admin" class="mod">
+      <input type="hidden" name="token" value="{{$.Token}}" />
+      <input type="hidden" name="id" value="{{.ID}}" />
+      <button class="btn big secondary" name="action" value="remove" type="submit">🗑 Remove from wall</button>
+    </form>
+  </div>
+  {{else}}
+  <div class="card muted">No approved uploads yet.</div>
+  {{end}}
+</div>
+<script>setTimeout(() => location.reload(), 10000)</script>
+{{end}}

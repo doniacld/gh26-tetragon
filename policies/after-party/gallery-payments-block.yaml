@@ -1,0 +1,39 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: "gallery-payments-block"
+spec:
+  # Load in monitor mode: a Tetragon restart must never start this policy
+  # enforcing. `make block` / `make kill` (tetra tp set-mode) switch it.
+  options:
+    - name: policy-mode
+      value: monitor
+  kprobes:
+    # security_socket_connect is the LSM hook on the connect path. Override can
+    # only be used on syscalls and security_ hooks (tcp_connect is NOT
+    # override-able on this kernel), so the surgical "block the call" beat hooks
+    # here rather than on tcp_connect.
+    - call: "security_socket_connect"
+      syscall: false
+      args:
+        - index: 1
+          type: "sockaddr"
+      selectors:
+        - matchBinaries:
+            - operator: "Postfix"
+              values: ["/gallery"] # only the gallery workload's own connects
+          matchArgs:
+            # On a connect the sockaddr is the *destination*; Tetragon exposes it
+            # via the SPort/SAddr operators. 8080 is the payments service port, so
+            # this matches exactly "gallery dialling payments" and leaves DNS and
+            # everything else alone.
+            - index: 1
+              operator: "SPort"
+              values: ["8080"]
+          matchActions:
+            # Override returns -EPERM from the connect: the upload dependency's
+            # call to payments fails, so /upload returns 503 while /pics and the
+            # pod itself keep serving. Respected only in enforce mode; in monitor
+            # mode the connect is just reported.
+            - action: Override
+              argError: -1 # -EPERM

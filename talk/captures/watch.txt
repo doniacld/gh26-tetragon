@@ -1,0 +1,2 @@
+security_socket_connect  gallery -> 10.96.148.65:8080  [gallery-payments-block]
+tcp_connect  gallery -> 10.96.148.65:8080  [gallery-payments-kill]

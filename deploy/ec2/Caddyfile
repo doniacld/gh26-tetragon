@@ -1,0 +1,19 @@
+# HTTPS for the EC2 demo: Caddy gets a Let's Encrypt certificate for the VM's
+# sslip.io name (Let's Encrypt doesn't certify bare IPs; <a-b-c-d>.sslip.io
+# resolves to a.b.c.d) and proxies to the kind cluster on port 80.
+# Install: sudo apt-get install -y caddy; copy to /etc/caddy/Caddyfile, replace
+# the name with your IP, then see deploy/ec2/README.md (issuance window).
+{
+	email donia.cld@gmail.com
+	# port 80 belongs to the kind cluster: no HTTP redirect, TLS-ALPN challenge only
+	auto_https disable_redirects
+}
+
+32-190-46-246.sslip.io {
+	tls {
+		issuer acme {
+			disable_http_challenge
+		}
+	}
+	reverse_proxy 127.0.0.1:80
+}

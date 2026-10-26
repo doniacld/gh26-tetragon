@@ -1,0 +1,53 @@
+{{define "title"}}Photo wall{{end}}
+{{define "content"}}
+<div class="crumbs">Mona's After-Party / Photo wall</div>
+<h1>Octocat sightings</h1>
+<p class="lede">Photos Mona posted around Universe, and now the ones you upload too.</p>
+
+<div class="panel" style="margin-bottom:24px">
+  <form action="/upload" method="post" enctype="multipart/form-data">
+    <label for="sighting">Share your Octocat sighting</label>
+    <input id="sighting" type="file" name="sighting" accept="image/jpeg,image/png" required />
+    <div style="margin-top:14px"><button class="btn big" type="submit">📸 Upload sighting</button></div>
+  </form>
+  {{if .Status}}<div class="status{{if .Error}} error{{end}}">{{.Status}}</div>{{end}}
+  <p class="muted" style="margin-top:14px;font-size:12px">JPEG or PNG, up to 10 MB. We make a 256px thumbnail
+    (photo location data is removed) and Mona approves it before it goes on the wall.</p>
+</div>
+
+<div class="cards" id="wall">
+  {{range .Sightings}}
+  <div class="card">
+    {{with .ImageURL}}<img src="{{.}}" alt="Octocat sighting" />{{end}}
+    <div>{{.Caption}}</div>
+    <div class="by">by {{.By}}</div>
+  </div>
+  {{else}}
+  <div class="card muted">The wall is loading… (is the gallery service up?)</div>
+  {{end}}
+</div>
+{{if .Status}}<script>history.replaceState(null, "", "/gallery")</script>{{end}}
+<script>
+  // Live wall: refresh the cards every 5 s (the big screen shows new approvals
+  // without anyone reloading). Built with DOM APIs, never innerHTML.
+  setInterval(async () => {
+    try {
+      const pics = await (await fetch("/api/pics", { cache: "no-store" })).json();
+      const wall = document.getElementById("wall");
+      wall.replaceChildren(...pics.map(p => {
+        const card = document.createElement("div");
+        card.className = "card";
+        if (p.image && p.image.startsWith("data:image/")) {
+          const img = document.createElement("img");
+          img.src = p.image; img.alt = "Octocat sighting";
+          card.append(img);
+        }
+        const caption = document.createElement("div"); caption.textContent = p.caption;
+        const by = document.createElement("div"); by.className = "by"; by.textContent = "by " + p.by;
+        card.append(caption, by);
+        return card;
+      }));
+    } catch (e) { /* keep the current wall if a refresh fails */ }
+  }, 5000);
+</script>
+{{end}}

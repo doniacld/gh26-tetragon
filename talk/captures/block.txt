@@ -1,0 +1,17 @@
+$ make block
+tracing policy "gallery-payments-block" set to mode "enforce"
+tracing policy "gallery-payments-kill" set to mode "monitor"
+$ make curl
+POST /buy    (ticket)   -> 200
+POST /upload (sighting) -> 503
+$ make prove
+{
+  "policy": "gallery-payments-block",
+  "action": "KPROBE_ACTION_OVERRIDE",
+  "binary": "/usr/local/bin/gallery",
+  "pod": "gallery-86dc676d5b-wwxhs"
+}
+$ make status
+NAME                     MODE      NENFORCE
+gallery-payments-block   enforce   1
+gallery-payments-kill    monitor   0

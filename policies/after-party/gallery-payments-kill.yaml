@@ -1,0 +1,32 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: "gallery-payments-kill"
+spec:
+  # Load in monitor mode: a Tetragon restart must never start this policy
+  # enforcing. `make block` / `make kill` (tetra tp set-mode) switch it.
+  options:
+    - name: policy-mode
+      value: monitor
+  kprobes:
+    # tcp_connect sees the outbound connection at the TCP layer. Sigkill works
+    # here (unlike Override, which the kernel only allows on syscalls/security_
+    # hooks), so this is the "bigger hammer" beat.
+    - call: "tcp_connect"
+      syscall: false
+      args:
+        - index: 0
+          type: "sock"
+      selectors:
+        - matchBinaries:
+            - operator: "Postfix"
+              values: ["/gallery"] # only the gallery workload
+          matchArgs:
+            - index: 0
+              operator: "DPort"
+              values: ["8080"] # the payments service port
+          matchActions:
+            # Sigkill terminates the gallery process on the forbidden connect, so
+            # each upload crashes the pod and a few in a row drive it into
+            # CrashLoopBackOff. Respected only in enforce mode.
+            - action: Sigkill

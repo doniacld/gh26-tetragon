@@ -1,0 +1,11 @@
+$ make kill
+$ make curl   # x4
+POST /upload (sighting) -> 503
+POST /upload (sighting) -> 503
+POST /upload (sighting) -> 503
+POST /upload (sighting) -> 503
+$ kubectl -n party get pods
+NAME                        READY   STATUS    RESTARTS      AGE
+frontend-75c787c5cc-lm5jp   1/1     Running   0             85s
+gallery-86dc676d5b-wwxhs    1/1     Running   3 (28s ago)   85s
+payments-6f8655f478-pvvp5   1/1     Running   0             85s

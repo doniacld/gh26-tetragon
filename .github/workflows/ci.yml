@@ -1,0 +1,147 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  # Static checks: build, test, vet, gofmt, and a vulnerability scan. They all
+  # pass — the shady upload dependency is a local module with no CVE. That's the
+  # point: static tools stay green; Tetragon catches the behaviour at runtime
+  # (see docs/demo-runbook.md).
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v7
+        with: { go-version: "1.26", check-latest: true, cache: false }
+      - run: go build ./...
+
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v7
+        with: { go-version: "1.26", check-latest: true, cache: false }
+      - run: go test ./...
+
+  vet:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v7
+        with: { go-version: "1.26", check-latest: true, cache: false }
+      - run: go vet ./...
+
+  fmt:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v7
+        with: { go-version: "1.26", check-latest: true, cache: false }
+      - run: test -z "$(gofmt -l .)"
+
+  vuln:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v7
+        with: { go-version: "1.26", check-latest: true, cache: false }
+      # Static vulnerability scan. It passes: the shady module has no CVE —
+      # which is the whole point. Runtime is where the behaviour shows up.
+      - run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - run: govulncheck ./...
+
+  # ── The sixth check: runtime enforcement with Tetragon ──────────────────────
+  # Stands up kind + Tetragon, deploys the three After-Party services, enforces
+  # the block policy (Override on security_socket_connect), then uploads a
+  # sighting — the feature whose dependency dials payments. Tetragon denies the
+  # gallery->payments connection, so gallery /upload returns 503 and this job
+  # fails the build. The five static checks above stay green.
+  #
+  # On a branch that still carries the shady dependency the job goes RED; swap it
+  # for a clean in-tree helper and /upload returns 201, so the job goes GREEN.
+  runtime-check:
+    runs-on: ubuntu-24.04
+    env:
+      TETRAGON_VERSION: "1.7.1"
+      CLUSTER: party-ci
+    steps:
+      - uses: actions/checkout@v5
+      - uses: helm/kind-action@v1
+        with: { cluster_name: party-ci }
+      - name: Install Tetragon
+        run: |
+          helm repo add cilium https://helm.cilium.io --force-update
+          # --disable-kprobe-multi: Override can't be used with kprobe_multi
+          # (newer runner kernels would otherwise fail to load the block policy)
+          helm upgrade --install tetragon cilium/tetragon -n kube-system \
+            --version "${TETRAGON_VERSION}" --set tetragon.extraArgs.disable-kprobe-multi=true
+          kubectl -n kube-system rollout status ds/tetragon
+      - name: Build, load, deploy the three services + policies
+        run: |
+          for s in frontend gallery payments; do
+            docker build -f deploy/Dockerfile --build-arg SERVICE=$s \
+              --build-arg GIT_SHA="${GITHUB_SHA}" -t $s:demo .
+            kind load docker-image $s:demo --name "${CLUSTER}"
+          done
+          sed "s/__GIT_SHA__/${GITHUB_SHA}/g" deploy/after-party.yaml | kubectl apply -f -
+          kubectl apply -f policies/after-party/
+          for s in frontend gallery payments; do
+            kubectl -n party rollout status deploy/$s --timeout=90s
+          done
+          sleep 5
+          # Block the gallery->payments call (Override); keep the kill policy in
+          # monitor so the gallery pod stays up and we can read the 503.
+          kubectl exec -n kube-system ds/tetragon -c tetragon -- \
+            tetra tp set-mode gallery-payments-block enforce
+          kubectl exec -n kube-system ds/tetragon -c tetragon -- \
+            tetra tp set-mode gallery-payments-kill monitor
+          sleep 3
+      # Background compact event stream for the report, as in lizrice/tetragon-ci
+      # (Apache-2.0), here through kubectl since Tetragon runs in the cluster.
+      - name: Start Tetragon compact event stream
+        shell: bash --noprofile --norc -euo pipefail {0}
+        run: |
+          : > /tmp/tetra_compact.log
+          (
+            unset RUNNER_TRACKING_ID  # keep the stream alive across steps
+            nohup timeout 300s kubectl exec -n kube-system ds/tetragon -c tetragon -- \
+              tetra getevents -o compact --namespace party > /tmp/tetra_compact.log 2>&1 &
+            echo $! > /tmp/tetra.pid
+          )
+          sleep 3
+          if ! kill -0 "$(cat /tmp/tetra.pid)" 2>/dev/null; then
+            echo "::error title=Tetragon compact event stream exited early"
+            cat /tmp/tetra_compact.log || true
+            exit 1
+          fi
+      - name: Upload a sighting and gate on the runtime result
+        run: |
+          # Hit the gallery service directly so we see its real status code.
+          kubectl -n party port-forward deploy/gallery 8080:8080 &
+          sleep 3
+          code=$(curl -s -o /dev/null -w '%{http_code}' \
+            -F sighting=@testdata/headshot.png localhost:8080/upload)
+          echo "gallery /upload -> $code"
+          if [ "$code" = "503" ]; then
+            echo "::error title=Runtime violation::Tetragon blocked the gallery->payments call the static checks missed (HTTP $code)"
+            kubectl -n kube-system logs ds/tetragon -c export-stdout \
+              | grep -E 'security_socket_connect|tcp_connect' | grep gallery | tail -n 20 || true
+            exit 1
+          fi
+          if [ "$code" = "201" ]; then
+            echo "/upload returned 201 — no runtime violation, build is clean."
+            exit 0
+          fi
+          echo "::error title=Unexpected status::/upload returned $code (expected 201 clean or 503 blocked)"
+          exit 1
+      - name: Report Tetragon activity
+        if: ${{ always() }}
+        uses: ./.github/actions/tetragon-report
+        with:
+          namespace: party
