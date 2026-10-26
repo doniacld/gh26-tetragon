@@ -134,7 +134,7 @@ func upload(w http.ResponseWriter, r *http.Request) {
 	status, code := "Thumbnail ready! Mona added it to the wall.", http.StatusOK
 	failed := err != nil || resp.StatusCode >= 400
 	if failed {
-		status = "Upload blocked: the thumbnail service refused (HTTP " + statusOf(resp, err) + ")."
+		status = "Upload service currently down. Please try again later."
 		code = http.StatusServiceUnavailable
 	}
 	if resp != nil {
