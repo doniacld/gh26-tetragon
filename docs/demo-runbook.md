@@ -52,7 +52,7 @@ so `make curl` hits the site there instead of `make forward`):
 
 | Terminal | Command | Why |
 |----------|---------|-----|
-| 1 | `make watch` | live gallery→payments events |
+| 1 | `make observe` | live Tetragon events, compact |
 | 2 | `make logs SVC=payments` | the `GET /vault` lines |
 | 3 | `make pods` | restarts and `CrashLoopBackOff` in Step 3 |
 | 4 | the commands below | drives the demo |
@@ -64,12 +64,12 @@ make monitor            # both policies report-only
 make preflight
 
 # Step 1: watch
-make curl               # ticket 200, upload 200; terminals 1 + 2 light up
+make curl               # ticket 200, upload 200; terminal 1: ❓ syscall + 🔌 connect, terminal 2: GET /vault
 make events | wc -l     # how many gallery->payments events Tetragon captured
 
 # Step 2: block
 make block
-make curl               # ticket 200, upload 503
+make curl               # ticket 200, upload 503; terminal 1: only ❓ syscall, no 🔌 connect
 make prove              # which policy fired, on which pod, and how many times it enforced
 
 # Step 3: kill
@@ -103,7 +103,7 @@ terminal per view **before** you upload (`tetra getevents` is a live stream; use
 
 | Terminal | Command | What one upload shows |
 |----------|---------|-----------------------|
-| Tetragon | `make watch` (filtered) or `make observe` (raw) | the gallery opening a socket to payments |
+| Tetragon | `make observe` (compact) or `make watch` (filtered) | the gallery opening a socket to payments |
 | payments | `make logs SVC=payments` | `GET /vault -> 200`: someone read the merchant secret |
 | gallery  | `make logs` | `POST /upload -> 201`: looks perfectly normal |
 | pods     | `make pods` | all `Running` (it matters in Step 3) |
@@ -116,11 +116,15 @@ security_socket_connect  gallery -> 10.96.x.x:8080  [gallery-payments-block]
 tcp_connect              gallery -> 10.96.x.x:8080  [gallery-payments-kill]
 ```
 
-`make observe` shows the same thing, unfiltered:
+`make observe` (the demo's terminal 1) shows the same thing in Tetragon's compact format:
 
 ```text
-🔌 connect party/gallery-xxxx /usr/local/bin/gallery tcp 10.244.0.9 -> 10.96.x.x:8080
+❓ syscall party/gallery-xxxx /usr/local/bin/gallery security_socket_connect
+🔌 connect party/gallery-xxxx /usr/local/bin/gallery tcp 10.244.0.9:46156 -> 10.96.x.x:8080
 ```
+
+Once blocked (Step 2), only the `❓ syscall` line remains: the connect is denied
+before TCP, so there is no `🔌 connect`.
 
 Read it out loud: **binary** `/usr/local/bin/gallery`, **pod** `party/gallery-*`,
 opened a connection to **payments on :8080**. The gallery serves photos; it has
