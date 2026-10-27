@@ -118,8 +118,7 @@ prove: ## The last gallery->payments event, readable, plus how many times each p
 	@ev=$$($(KUBECTL) -n kube-system logs ds/tetragon -c export-stdout --tail=500 \
 		| grep -E 'security_socket_connect|tcp_connect' | grep gallery | tail -n 1); \
 	[ -n "$$ev" ] || { echo "no gallery -> payments event yet"; exit 1; }; \
-	echo "$$ev" | jq -r '.process_kprobe | (.args[0].sockaddr_arg // .args[0].sock_arg) as $$d | \
-		"policy   \(.policy_name)\nbinary   \(.process.binary)\npod      \(.process.pod.namespace)/\(.process.pod.name)\nhook     \(.function_name)\ntarget   \($$d.addr // $$d.daddr):\($$d.port // $$d.dport)"'; \
+	echo "$$ev" | jq -r '.process_kprobe | (.args[0].sockaddr_arg // .args[0].sock_arg) as $$d | "policy   \(.policy_name)\nbinary   \(.process.binary)\npod      \(.process.pod.namespace)/\(.process.pod.name)\nhook     \(.function_name)\ntarget   \($$d.addr // $$d.daddr):\($$d.port // $$d.dport)"'; \
 	echo; $(TETRA) tetra tp list | awk '$$2 ~ /^gallery-payments-/ {printf "%-24s %-8s enforced %s times\n", $$2, $$9, $$11}'
 
 status: ## Policy modes + enforcement counters: NENFORCE climbs only when a policy actually enforced
