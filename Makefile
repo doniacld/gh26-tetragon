@@ -135,6 +135,7 @@ redeploy: ## Rebuild one service from the current source and roll it out (SVC=ga
 	kind load docker-image $(or $(SVC),gallery):demo --name $(CLUSTER)
 	$(KUBECTL) -n $(NS) rollout restart deploy/$(or $(SVC),gallery)
 	$(KUBECTL) -n $(NS) rollout status deploy/$(or $(SVC),gallery)
+	@sleep 5   # let the old pod leave the Service endpoints, or the next request can 503
 
 fix: ## Apply the one-line fix (gallery imports internal/sightings) and redeploy the gallery
 	sed -i.bak 's#^\t"github.com/octopkg/upload"#\tupload "$(MODULE)/internal/sightings"#' services/gallery/main.go && rm -f services/gallery/main.go.bak
