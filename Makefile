@@ -9,6 +9,7 @@ NS              ?= party
 # Where make curl sends requests: make forward (default), or SITE=http://127.0.0.1 on the VM
 SITE            ?= http://localhost:8080
 SERVICES        := frontend gallery payments
+MODULE          := $(shell awk '/^module/{print $$2}' go.mod)
 # No .git on the EC2 VM: deploy/ec2/README.md copies the commit hash into .git-sha
 GIT_SHA         := $(shell git rev-parse HEAD 2>/dev/null || cat .git-sha 2>/dev/null)
 
@@ -128,6 +129,22 @@ status: ## Policy modes + enforcement counters: NENFORCE climbs only when a poli
 
 admin-url: ## Print the moderation page URL (SITE=https://<name> on the VM; default http://localhost:8080)
 	@echo "$(or $(SITE),http://localhost:8080)/admin?token=$$($(KUBECTL) -n $(NS) get secret party-admin -o jsonpath='{.data.token}' | base64 -d)"
+
+redeploy: ## Rebuild one service from the current source and roll it out (SVC=gallery by default)
+	docker build -q -f deploy/Dockerfile --build-arg SERVICE=$(or $(SVC),gallery) --build-arg GIT_SHA=$(GIT_SHA) -t $(or $(SVC),gallery):demo .
+	kind load docker-image $(or $(SVC),gallery):demo --name $(CLUSTER)
+	$(KUBECTL) -n $(NS) rollout restart deploy/$(or $(SVC),gallery)
+	$(KUBECTL) -n $(NS) rollout status deploy/$(or $(SVC),gallery)
+
+fix: ## Apply the one-line fix (gallery imports internal/sightings) and redeploy the gallery
+	sed -i.bak 's#^\t"github.com/octopkg/upload"#\tupload "$(MODULE)/internal/sightings"#' services/gallery/main.go && rm -f services/gallery/main.go.bak
+	@grep -n 'internal/sightings' services/gallery/main.go
+	$(MAKE) redeploy SVC=gallery
+
+unfix: ## Undo make fix: back to github.com/octopkg/upload, redeploy the gallery
+	sed -i.bak 's#^\tupload "$(MODULE)/internal/sightings"#\t"github.com/octopkg/upload"#' services/gallery/main.go && rm -f services/gallery/main.go.bak
+	@grep -n 'octopkg/upload"' services/gallery/main.go
+	$(MAKE) redeploy SVC=gallery
 
 clean: ## Full teardown: delete the kind cluster and the built images
 	-kind delete cluster --name $(CLUSTER)
