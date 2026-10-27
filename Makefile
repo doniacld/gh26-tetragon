@@ -111,8 +111,10 @@ block: ## Enforce the block policy (Override): gallery->payments is denied, uplo
 kill: ## Enforce the kill policy (Sigkill): a gallery->payments connect crashes the gallery pod
 	$(TETRA) tetra tp set-mode gallery-payments-block monitor
 	$(TETRA) tetra tp set-mode gallery-payments-kill enforce
-	@echo "Now hit the app a few times (make curl): the gallery pod trips SIGKILL and lands in CrashLoopBackOff."
-	$(KUBECTL) -n $(NS) get pods -w
+	@echo "Now hit the app a few times (make curl) and keep make pods open: the gallery pod trips SIGKILL and lands in CrashLoopBackOff."
+
+pods: ## Watch the party pods, refreshed every second (Ctrl-C to stop)
+	watch -n 1 $(KUBECTL) -n $(NS) get pods
 
 prove: ## The last gallery->payments event, readable, plus how many times each policy was enforced
 	@ev=$$($(KUBECTL) -n kube-system logs ds/tetragon -c export-stdout --tail=500 \
