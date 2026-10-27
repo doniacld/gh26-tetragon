@@ -45,6 +45,48 @@ are `enabled` (`make status`), then `kubectl -n party rollout restart deploy/fro
 deploy/gallery deploy/payments` and run `make preflight` again (see
 `docs/tetragon-explained.md`, gotcha 5).
 
+## The full demo at a glance
+
+Four terminals, opened before the first upload (on the EC2 VM, `export SITE=http://127.0.0.1`
+so `make curl` hits the site there instead of `make forward`):
+
+| Terminal | Command | Why |
+|----------|---------|-----|
+| 1 | `make watch` | live gallery→payments events |
+| 2 | `make logs SVC=payments` | the `GET /vault` lines |
+| 3 | `make pods` | restarts and `CrashLoopBackOff` in Step 3 |
+| 4 | the commands below | drives the demo |
+
+```bash
+# before going on stage
+make unfix              # the shady module is back in (no-op if it already is)
+make monitor            # both policies report-only
+make preflight
+
+# Step 1: watch
+make curl               # ticket 200, upload 200; terminals 1 + 2 light up
+make events | wc -l     # how many gallery->payments events Tetragon captured
+
+# Step 2: block
+make block
+make curl               # ticket 200, upload 503
+make prove              # which policy fired, on which pod, and how many times it enforced
+
+# Step 3: kill
+make kill
+make curl               # a few times: terminal 3 shows the gallery restarting
+
+# Step 4: the fix
+make fix                # one-line import swap + redeploy the gallery
+make curl               # upload 200 even with the kill policy enforced
+
+# after the talk
+make unfix
+make monitor
+```
+
+---
+
 ## Step 1 — Deploy and watch (monitor mode)
 
 ```bash
@@ -64,6 +106,7 @@ terminal per view **before** you upload (`tetra getevents` is a live stream; use
 | Tetragon | `make watch` (filtered) or `make observe` (raw) | the gallery opening a socket to payments |
 | payments | `make logs SVC=payments` | `GET /vault -> 200`: someone read the merchant secret |
 | gallery  | `make logs` | `POST /upload -> 201`: looks perfectly normal |
+| pods     | `make pods` | all `Running` (it matters in Step 3) |
 
 **1. Tetragon: the connection itself.** `make watch` prints one line per event
 from the gallery binary:
@@ -120,7 +163,7 @@ connect returns `EPERM`, the upload fails, and only `/upload` returns 503.
 ```bash
 make block              # block -> enforce (Override), kill -> monitor
 make curl               # re-run: ticket 200, upload 503
-make status             # NENFORCE on gallery-payments-block goes 0 -> 1
+make prove              # the event + gallery-payments-block "enforced 1 times"
 ```
 
 **Expected** — only the compromised feature fails; no pod restarts:
@@ -130,7 +173,7 @@ POST /buy    (ticket)   -> 200
 POST /upload (sighting) -> 503
 ```
 
-In the **browser**: uploading shows **⛔ Upload service currently down. Please try again later.** (HTTP 503)**, no new photo is added, and the Photo wall and ticket
+In the **browser**: uploading shows **⛔ Upload service currently down. Please try again later.** (HTTP 503), no new photo is added, and the Photo wall and ticket
 purchase keep working. The payments log shows **no** `GET /vault`: the connect
 was denied before it left the gallery. Tetragon surgically denied *one
 connection* from *one workload*.
@@ -139,35 +182,27 @@ connection* from *one workload*.
 > hooks `security_socket_connect` and not `tcp_connect`.
 
 The 503 is the *visible* effect. `make prove` shows **which policy fired**, on
-which binary and pod:
+which binary and pod, and how many times each policy actually **enforced**:
 
 ```bash
 make prove
 ```
-```json
-{
-  "policy": "gallery-payments-block",
-  "action": "KPROBE_ACTION_OVERRIDE",
-  "binary": "/usr/local/bin/gallery",
-  "pod": "gallery-xxxx"
-}
-```
-
-> `action` is the policy's **configured** action: the event says
-> `KPROBE_ACTION_OVERRIDE` in monitor mode too. On its own it does not prove a
-> block.
-
-The proof that Tetragon **enforced** it is the policy's enforcement counter:
-
-```bash
-make status
-```
 ```text
-NAME                     ...   MODE      NPOST   NENFORCE   NMONITOR
-gallery-payments-block   ...   enforce   7       1          6
+policy   gallery-payments-block
+binary   /usr/local/bin/gallery
+pod      party/gallery-xxxx
+hook     security_socket_connect
+target   10.96.x.x:8080
+
+gallery-payments-block   enforce  enforced 1 times
+gallery-payments-kill    monitor  enforced 0 times
 ```
 
-`NENFORCE` goes from 0 to 1 on the blocked upload: the kernel answered the
+> The event alone does not prove a block: its `action` field is the policy's
+> **configured** action and reads `KPROBE_ACTION_OVERRIDE` in monitor mode too.
+> The proof is the counter (`NENFORCE` in `make status`, the full `tetra tp list`).
+
+"enforced" goes from 0 to 1 on the blocked upload: the kernel answered the
 gallery's connect with `EPERM` ("operation not permitted"), no packet left the
 pod, and the gallery process kept running.
 
@@ -179,6 +214,7 @@ The bigger hammer. Enforce `gallery-payments-kill` — a `Sigkill` on `tcp_conne
 when the upload dials payments, Tetragon kills the gallery process.
 
 ```bash
+make pods               # its own terminal: the pod table, refreshed every second
 make kill               # kill -> enforce (Sigkill), block -> monitor
 make curl               # repeat a few times — each upload trips SIGKILL
 ```
@@ -195,6 +231,9 @@ Same flow, same binary — only the *action* and *which policy* enforce changed.
 `Override` blocks a call; `Sigkill` takes the whole container down. `frontend`
 and `payments` keep serving throughout.
 
+Kubernetes waits longer before each restart (10s, 20s, 40s… up to 5 min); between
+uploads the gallery comes back to `Running` until the next one kills it again.
+
 ---
 
 ## Step 4 — Show the one-line fix
@@ -202,8 +241,16 @@ and `payments` keep serving throughout.
 The whole "attack" is one import: the agent chose `github.com/octopkg/upload`
 instead of a plain in-tree helper. The fix swaps that import in
 `services/gallery/main.go` for an in-repo thumbnail package — same thumbnail, no
-payload, no gallery→payments call for Tetragon to catch. Deploy it and
-`/upload` returns 200 with nothing in `make observe`.
+payload, no gallery→payments call for Tetragon to catch.
+
+```bash
+make fix                # swap the import, rebuild + roll out the gallery
+make curl               # upload 200, even with the kill policy still enforced
+make unfix              # back to the shady module for the next rehearsal
+```
+
+`make fix` is the same one-line diff as the `fix/clean-upload` branch.
+`make redeploy SVC=<service>` rebuilds and rolls out any service from the current source.
 
 ---
 
@@ -220,5 +267,7 @@ the code *is*; Tetragon checks what it *does*.
 ## Reset between rehearsals
 
 ```bash
-make clean
+make unfix              # undo Step 4
+make monitor            # both policies report-only
+make clean              # or the full teardown: delete the kind cluster
 ```
