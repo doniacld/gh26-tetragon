@@ -6,6 +6,8 @@ CLUSTER         ?= agents-demo
 KIND_CONFIG     ?=
 TETRAGON_CHART  ?= 1.7.1
 NS              ?= party
+# Where make curl sends requests: make forward (default), or SITE=http://127.0.0.1 on the VM
+SITE            ?= http://localhost:8080
 SERVICES        := frontend gallery payments
 # No .git on the EC2 VM: deploy/ec2/README.md copies the commit hash into .git-sha
 GIT_SHA         := $(shell git rev-parse HEAD 2>/dev/null || cat .git-sha 2>/dev/null)
@@ -91,9 +93,11 @@ open: ## Open the party site in a browser (needs `make forward` running)
 logs: ## Follow the gallery request log (SVC=frontend|payments for the others)
 	$(KUBECTL) -n $(NS) logs -f deploy/$(or $(SVC),gallery)
 
-curl: ## Buy a ticket then upload a sighting via the frontend (needs `make forward`)
-	@curl -s -o /dev/null -w 'POST /buy    (ticket)   -> %{http_code}\n' -X POST localhost:8080/buy
-	@curl -s -o /dev/null -w 'POST /upload (sighting) -> %{http_code}\n' -F sighting=@testdata/headshot.png localhost:8080/upload
+curl: ## Buy a ticket then upload a sighting, printing each curl command and its HTTP code (SITE=, default needs `make forward`)
+	@echo '$$ curl -X POST $(SITE)/buy'
+	@curl -s -o /dev/null -w '  -> HTTP %{http_code}\n' -X POST $(SITE)/buy || echo "  -> no answer: is make forward running? (or pass SITE=...)"
+	@echo '$$ curl -F sighting=@testdata/headshot.png $(SITE)/upload'
+	@curl -s -o /dev/null -w '  -> HTTP %{http_code}\n' -F sighting=@testdata/headshot.png $(SITE)/upload || echo "  -> no answer: is make forward running? (or pass SITE=...)"
 
 monitor: ## Both policies report-only (never block)
 	$(TETRA) tetra tp set-mode gallery-payments-block monitor
