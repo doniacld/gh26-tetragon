@@ -22,7 +22,7 @@ import (
 	"net/http"
 	"os"
 
-	upload "github.com/doniacld/gh26-tetragon/internal/sightings"
+	"github.com/octopkg/upload"
 )
 
 // sighting is one photo on the wall.
