@@ -82,8 +82,8 @@ spec:
             # TEST-NET-1 (RFC 5737) — unroutable, outside the cluster CIDRs.
             # - name: SINK_ADDR
             #   value: "192.0.2.1:4444"
-            # Uploads are saved here so a Sigkill restart keeps the wall; the
-            # emptyDir is wiped when the pod is deleted.
+            # Uploads are saved here, on the node (hostPath), so the wall survives a
+            # Sigkill restart and a redeploy (make fix/unfix); only make clean wipes it.
             - name: UPLOADS_FILE
               value: /data/uploads.json
           volumeMounts:
@@ -92,7 +92,7 @@ spec:
           readinessProbe: { httpGet: { path: /healthz, port: 8080 } }
       volumes:
         - name: uploads
-          emptyDir: { sizeLimit: 64Mi }
+          hostPath: { path: /var/lib/party-uploads, type: DirectoryOrCreate }
 ---
 apiVersion: v1
 kind: Service
